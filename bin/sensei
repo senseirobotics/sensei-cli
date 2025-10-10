@@ -21,6 +21,7 @@ if  __name__=='__main__':
     parser = argparse.ArgumentParser("Sensei Robotics CLI")
     parser.add_argument("--key", help="Set global API Key")
     parser.add_argument("--ls", metavar="PATH", nargs="?", const="/", help="List contents of given path")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Interactive mode")
     parser.add_argument("-o", "--out", metavar="DIR", default="sensei-data", help="Directory to write files to")
     parser.add_argument("-d", "--download", metavar="PATH", nargs="?", const="/", help="Download resource at given path."
                         " If no argument given, download everything. To download directory, use --recursive")
@@ -46,20 +47,66 @@ if  __name__=='__main__':
         if not conf["key"]:
             exit()
         write_conf(conf)
+        exit()
     
     api = Api(conf["key"], destination=destination_path)
 
-    if args.ls:
-        result_count = 0
-        for e in api.iter_dirs(args.ls):
-            print("(DIR)", e["path"])
-            result_count += 1
-        for e in api.iter_files(args.ls):
-            print(e["filename"])
-            result_count += 1
-        
-        print()
-        print(result_count, "results")
+    if args.interactive:
+        print("Entering interactive mode. Type 'help' for help, 'exit' to exit")
+        while True:
+            try:
+                cmd = input("sensei> ").strip()
+            except EOFError:
+                print()
+                break
+            if cmd in ("exit", "quit"):
+                break
+            elif cmd == "help":
+                print("Commands:")
+                print("  ls [PATH]          List contents of given path (default /)")
+                print("  download PATH      Download file at given path")
+                print("  rdownload PATH    Recursively download all files in given directory")
+                print("  exit, quit        Exit interactive mode")
+                print("  help              Show this help message")
+            elif cmd.startswith("ls"):
+                parts = cmd.split(maxsplit=1)
+                path = parts[1] if len(parts) > 1 else "/"
+                result_count = 0
+                for e in api.iter_dirs(path):
+                    print("(DIR)", e["path"])
+                    result_count += 1
+                for e in api.iter_files(path):
+                    print(e["filename"])
+                    result_count += 1
+                
+                print()
+                print(result_count, "results")
+            elif cmd.startswith("download"):
+                parts = cmd.split(maxsplit=1)
+                if len(parts) < 2:
+                    print("Error: download command requires a PATH argument")
+                    continue
+                path = parts[1]
+                print(f"Downloading file {path} into {destination_path}...")
+                try:
+                    api.download_file_from_path(path, overwrite=args.overwrite)
+                except FileNotFoundError:
+                    print("Warning: file not found")
+            elif cmd.startswith("rdownload"):
+                parts = cmd.split(maxsplit=1)
+                if len(parts) < 2:
+                    print("Error: rdownload command requires a PATH argument")
+                    continue
+                path = parts[1]
+                print(f"Recursively downloading from {path} into {destination_path}...")
+                file_found = api.recursive_download(path=path, overwrite=args.overwrite)
+                if not file_found:
+                    print("Warning: folder is empty or doesn't exist")
+            elif cmd == "":
+                continue
+            else:
+                print("Unknown command:", cmd)
+        exit()
 
     if args.download:
         if args.recursive:
@@ -73,6 +120,23 @@ if  __name__=='__main__':
                 api.download_file_from_path(args.download, overwrite=args.overwrite)
             except FileNotFoundError:
                 print("Warning: file not found")
+        exit()
+
+    if args.ls:
+        result_count = 0
+        for e in api.iter_dirs(args.ls):
+            print("(DIR)", e["path"])
+            result_count += 1
+        for e in api.iter_files(args.ls):
+            print(e["filename"])
+            result_count += 1
+        
+        print()
+        print(result_count, "results")
+
+        exit()
+
+    parser.print_help()
 
 
 
