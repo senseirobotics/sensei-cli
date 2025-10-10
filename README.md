@@ -2,10 +2,9 @@
 
 ## Installation
 
-1. Activate a conda or virtualenv
-2. In this directory, `pip install .`
-3. Copy your API key from https://senseirobotics.com/dashboard/settings
-4. Run `sensei --key <YOUR KEY>`
+```
+pip install sensei-cli
+```
 
 ## Example Usage
 
@@ -66,4 +65,21 @@ sensei -rd path/to/my_directory
 sensei --recursive --overwrite --download /
 # or more concise:
 sensei -rwd
+```
+
+### Interactive mode
+
+```bash
+>> sensei -i
+Entering interactive mode. Type 'help' for help, 'exit' to exit
+sensei> ls
+(DIR) dir1
+
+1 results
+sensei> ls dir1
+(DIR) dir1/dir2
+
+1 results
+rdownload dir1/dir2
+Recursively downloading from dir1/dir2 into /sensei-data...
 ```

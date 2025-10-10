@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sensei-cli"
+version = "0.0.1"
+authors = [
+  { name="Sensei Robotics", email="support@senseirobotics.com" },
+]
+description = "Command-line-interface for Sensei Robotics data"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests",
+    "tqdm",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[tool.setuptools]
+script-files = ["bin/sensei"]
+
+[project.urls]
+Homepage = "https://github.com/senseirobotics/sensei-cli"
+Issues = "https://github.com/senseirobotics/sensei-cli/issues"
