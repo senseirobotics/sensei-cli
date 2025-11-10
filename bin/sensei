@@ -38,6 +38,7 @@ if  __name__=='__main__':
         print("Writing API key to", CONF_PATH)
         conf["key"] = args.key
         write_conf(conf)
+        exit()
     
     destination_path = os.path.abspath(args.out)
 
