@@ -79,6 +79,10 @@ class Api:
                 print("WARNING: File already exists. Skipping download. Set overwrite=True to overwrite")
                 return
             
+        if not file_details.get("download_link"):
+            print("File not available to download, skipping...")
+            return
+            
         response = requests.get(file_details["download_link"], stream=True)
         CHUNK_SIZE = 10240
         num_chunks = math.ceil(int(response.headers['Content-Length'])/CHUNK_SIZE)
