@@ -2,6 +2,8 @@ import requests
 from tqdm import tqdm
 import os
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Event, Lock
 
 class Api:
     def __init__(self, api_key, destination=None):
@@ -12,6 +14,7 @@ class Api:
         else:
             self.api_root = "https://api.senseirobotics.com/datasets/"
         self.destination = destination
+        self._cancel_event = Event()
 
     def make_request(self, url, include_root=True):
         response = requests.get(f"{self.api_root if include_root else ''}{url}", headers={"Authorization": f"ApiKey {self.api_key}"})
@@ -59,7 +62,7 @@ class Api:
         """
         return self.make_request(f"files/{file_id}/")
     
-    def _download_file(self, filepath, file, overwrite=False):
+    def _download_file(self, filepath, file, overwrite=False, progress=None, progress_lock=None):
         """
         Downloads the file
         """
@@ -70,45 +73,102 @@ class Api:
 
         file_details = self.get_file_details(file["id"])
 
-        print("Downloading to", dest_filepath)
+        aggregated = progress is not None
+        notify = tqdm.write if aggregated else print
+
+        if not aggregated:
+            print("Downloading to", dest_filepath)
         os.makedirs(os.path.dirname(dest_filepath), exist_ok=True)
         if os.path.isfile(dest_filepath):
             if overwrite:
-                print("Overwriting")
+                if not aggregated:
+                    print("Overwriting")
             else:
-                print("WARNING: File already exists. Skipping download. Set overwrite=True to overwrite")
+                notify(f"WARNING: File already exists, skipping: {dest_filepath}. Set overwrite=True to overwrite")
                 return
-            
+
         if not file_details.get("download_link"):
-            print("File not available to download, skipping...")
+            notify(f"File not available to download, skipping: {dest_filepath}")
             return
-            
+
+        if self._cancel_event.is_set():
+            return
+
         response = requests.get(file_details["download_link"], stream=True)
         CHUNK_SIZE = 1024 * 1024  # 1MB
-        num_chunks = math.ceil(int(response.headers['Content-Length'])/CHUNK_SIZE)
-        with open(dest_filepath, "wb") as handle:
-            for data in tqdm(response.iter_content(chunk_size=CHUNK_SIZE), unit='MB', total=num_chunks):
-                handle.write(data)
+        partial_path = dest_filepath + ".part"
+
+        try:
+            if aggregated:
+                content_length = int(response.headers['Content-Length'])
+                with progress_lock:
+                    progress.total += content_length
+                    progress.refresh()
+                with open(partial_path, "wb") as handle:
+                    for data in response.iter_content(chunk_size=CHUNK_SIZE):
+                        if self._cancel_event.is_set():
+                            raise KeyboardInterrupt()
+                        handle.write(data)
+                        progress.update(len(data))
+            else:
+                num_chunks = math.ceil(int(response.headers['Content-Length'])/CHUNK_SIZE)
+                with open(partial_path, "wb") as handle:
+                    for data in tqdm(response.iter_content(chunk_size=CHUNK_SIZE), unit='MB', total=num_chunks):
+                        handle.write(data)
+            os.replace(partial_path, dest_filepath)
+        except BaseException:
+            try:
+                os.remove(partial_path)
+            except OSError:
+                pass
+            raise
 
     def download_file_from_path(self, path, overwrite=False):
         file = self.get_file(path)
         return self._download_file(path, file, overwrite=overwrite)
 
-    def recursive_download(self, path="/", overwrite=False):
+    def recursive_download(self, path="/", overwrite=False, max_workers=8):
         """
         Recursively download all files in given folder
         """
-        
-        print(f"Downloading from {path}...")
+        self._cancel_event.clear()
+        progress_lock = Lock()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor, \
+             tqdm(total=0, unit='B', unit_scale=True, desc="Downloading") as progress:
+            futures = []
+            file_found = self._schedule_recursive_download(
+                executor, futures, path, overwrite, progress, progress_lock,
+            )
+            try:
+                for future in as_completed(futures):
+                    future.result()
+            except KeyboardInterrupt:
+                self._cancel_event.set()
+                for f in futures:
+                    f.cancel()
+                raise
+        return file_found
+
+    def _schedule_recursive_download(self, executor, futures, path, overwrite, progress, progress_lock):
+        tqdm.write(f"Downloading from {path}...")
         file_found = False
         for file in self.iter_files(path):
-            self._download_file(os.path.join(path, file["filename"]), file, overwrite=overwrite)
+            futures.append(executor.submit(
+                self._download_file,
+                os.path.join(path, file["filename"]),
+                file,
+                overwrite=overwrite,
+                progress=progress,
+                progress_lock=progress_lock,
+            ))
             file_found = True
 
         for folder in self.iter_dirs(path):
-            self.recursive_download(path=folder["path"], overwrite=overwrite)
+            self._schedule_recursive_download(
+                executor, futures, folder["path"], overwrite, progress, progress_lock,
+            )
             file_found = True
-            
+
         return file_found
 
 
