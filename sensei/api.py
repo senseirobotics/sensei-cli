@@ -84,10 +84,10 @@ class Api:
             return
             
         response = requests.get(file_details["download_link"], stream=True)
-        CHUNK_SIZE = 10240
+        CHUNK_SIZE = 1024 * 1024  # 1MB
         num_chunks = math.ceil(int(response.headers['Content-Length'])/CHUNK_SIZE)
         with open(dest_filepath, "wb") as handle:
-            for data in tqdm(response.iter_content(chunk_size=CHUNK_SIZE), unit='kB', total=num_chunks):
+            for data in tqdm(response.iter_content(chunk_size=CHUNK_SIZE), unit='MB', total=num_chunks):
                 handle.write(data)
 
     def download_file_from_path(self, path, overwrite=False):
